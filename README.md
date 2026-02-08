@@ -11,15 +11,15 @@
 ### Architecture Diagram
 
 ```mermaid
-flowchart TD
-    A[Client<br/>Thunder Client/curl/Postman] -->|HTTP :8000| B[Gateway Container]
-    B -->|HTTP :8001<br/>Docker Network| C[Backend Container]
+graph TD
+    A[Client<br/>Thunder Client/curl/Postman] -->|HTTP :8000| B[Gateway Container<br/>python:3.11-slim]
+    B -->|HTTP :8001<br/>Docker Network| C[Backend Container<br/>python:3.11-alpine]
     C -->|JSON Response| B
     B -->|JSON Response| A
     
-    style A fill:#c8e6c9
-    style B fill:#bbdefb
-    style C fill:#e1bee7
+    style A fill:#f5f5f5,stroke:#333,stroke-width:2px
+    style B fill:#f5f5f5,stroke:#333,stroke-width:2px
+    style C fill:#f5f5f5,stroke:#333,stroke-width:2px
 
 ```
 
