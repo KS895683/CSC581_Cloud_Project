@@ -47,11 +47,11 @@ graph TD
 - **Reason**: Extremely small image size, reduced attack surface, great for minimal environments
 - **Access**: Internal only, accessed via Gateway forwarding
 
+---
 
 ## Build Process
 
 ### Gateway Dockerfile Analysis
-
 ```dockerfile
 FROM python:3.11-slim
 
@@ -74,30 +74,25 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD python -c "import requests; requests.get('http://localhost:8000/health', timeout=2)"
 
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
-Line-by-line explanation:
+```
 
-FROM python:3.11-slim: Uses the slim Python image for balanced size (~120MB) and compatibility
+**Line-by-line explanation:**
 
-RUN useradd -m -u 1000 appuser: Creates a non-root user (UID 1000) for security (A-level requirement)
+- `FROM python:3.11-slim` — Uses the slim Python image for balanced size (~120MB) and compatibility
+- `RUN useradd -m -u 1000 appuser` — Creates a non-root user (UID 1000) for security
+- `WORKDIR /app` — Sets the working directory inside the container
+- `COPY requirements.txt .` — Copies requirements first for Docker layer caching
+- `RUN pip install --no-cache-dir -r requirements.txt` — Installs dependencies without saving cache (reduces image size)
+- `COPY app.py .` — Copies the application code
+- `USER appuser` — Switches to non-root user before running the app
+- `EXPOSE 8000` — Documents that the container listens on port 8000
+- `HEALTHCHECK` — Allows Docker to monitor container health and restart if unhealthy
+- `CMD` — Starts the FastAPI application with uvicorn server
 
-WORKDIR /app: Sets the working directory inside the container
+---
 
-COPY requirements.txt .: Copies requirements first for Docker layer caching
-
-RUN pip install --no-cache-dir -r requirements.txt: Installs dependencies without saving cache (reduces image size)
-
-COPY app.py .: Copies the application code
-
-USER appuser: Switches to non-root user before running the app
-
-EXPOSE 8000: Documents that the container listens on port 8000
-
-HEALTHCHECK: Allows Docker to monitor container health and restart if unhealthy
-
-CMD: Starts the FastAPI application with uvicorn server
-
-Backend Dockerfile Analysis
-dockerfile
+### Backend Dockerfile Analysis
+```dockerfile
 FROM python:3.11-alpine
 
 RUN adduser -D -u 1000 backenduser && \
@@ -119,56 +114,79 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD python -c "import requests; requests.get('http://localhost:8001/health', timeout=2)"
 
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8001"]
-Line-by-line explanation:
+```
 
-FROM python:3.11-alpine: Uses Alpine Linux for minimal size (~40MB) and reduced attack surface
+**Line-by-line explanation:**
 
-RUN adduser -D -u 1000 backenduser: Creates non-root user (Alpine uses adduser -D instead of useradd)
+- `FROM python:3.11-alpine` — Uses Alpine Linux for minimal size (~40MB) and reduced attack surface
+- `RUN adduser -D -u 1000 backenduser` — Creates non-root user (Alpine uses `adduser -D` instead of `useradd`)
+- `WORKDIR /app` — Sets working directory
+- `COPY requirements.txt .` — Copies dependencies first for caching
+- `RUN pip install --no-cache-dir -r requirements.txt` — Installs only FastAPI and uvicorn
+- `COPY app.py .` — Copies the backend application
+- `USER backenduser` — Switches to non-root user
+- `EXPOSE 8001` — Internal port (not exposed to host)
+- `HEALTHCHECK` — Ensures backend is ready before accepting traffic
+- `CMD` — Starts the backend FastAPI application
 
-WORKDIR /app: Sets working directory
+---
 
-COPY requirements.txt .: Copies dependencies first for caching
-
-RUN pip install --no-cache-dir -r requirements.txt: Installs only FastAPI and uvicorn
-
-COPY app.py .: Copies the backend application
-
-USER backenduser: Switches to non-root user
-
-EXPOSE 8001: Internal port (not exposed to host)
-
-HEALTHCHECK: Ensures backend is ready before accepting traffic
-
-CMD: Starts the backend FastAPI application
-
-```markdown
 ## Networking
 
 ### Docker Bridge Network
 
 The project uses a **user-defined bridge network** for container communication:
-
 ```yaml
 networks:
   api-network:
     driver: bridge
-Why bridge network?
+```
 
-Isolates containers from host network
+**Why bridge network?**
 
-Enables DNS-based service discovery
+- Isolates containers from host network
+- Enables DNS-based service discovery
+- Allows controlled port exposure (only Gateway exposed externally)
 
-Allows controlled port exposure (only Gateway exposed externally)
+---
 
-```markdown
-## Networking
+### DNS Resolution by Container Name
 
-### Docker Bridge Network
+Docker provides automatic DNS resolution for containers on the same network:
+```python
+# In gateway/app.py
+BACKEND_URL = "http://backend:8001"
+```
 
-The project uses a **user-defined bridge network** for container communication:
+- `backend` resolves to the backend container's IP address automatically
+- No need for static IPs or manual `/etc/hosts` configuration
+- Service discovery happens out-of-the-box
 
-```yaml
-networks:
-  api-network:
-    driver: bridge
-    
+---
+
+### Network Configuration Summary
+
+| Service | Network Access     | Port Mapping       | Purpose                        |
+|---------|--------------------|--------------------|--------------------------------|
+| Gateway | External + Internal | `8000:8000`       | Accepts client requests        |
+| Backend | Internal Only      | `8001` (exposed)   | Only accessible via Gateway    |
+
+---
+
+### Why Internal-Only for Backend?
+
+1. **Security**: Reduces attack surface (only one entry point to the system)
+2. **Architecture**: Enforces single entry point pattern
+3. **Simplified Firewall**: Only one port needs external protection
+
+---
+
+### Testing Network Connectivity
+```bash
+# Access gateway (external)
+curl http://localhost:8000/health
+
+# Gateway internally reaches backend via DNS
+curl http://localhost:8000/api/data
+```
+
