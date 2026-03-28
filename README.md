@@ -78,16 +78,16 @@ CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
 
 **Line-by-line explanation:**
 
-- `FROM python:3.11-slim` — Uses the slim Python image for balanced size (~120MB) and compatibility
-- `RUN useradd -m -u 1000 appuser` — Creates a non-root user (UID 1000) for security
-- `WORKDIR /app` — Sets the working directory inside the container
-- `COPY requirements.txt .` — Copies requirements first for Docker layer caching
-- `RUN pip install --no-cache-dir -r requirements.txt` — Installs dependencies without saving cache (reduces image size)
-- `COPY app.py .` — Copies the application code
-- `USER appuser` — Switches to non-root user before running the app
-- `EXPOSE 8000` — Documents that the container listens on port 8000
-- `HEALTHCHECK` — Allows Docker to monitor container health and restart if unhealthy
-- `CMD` — Starts the FastAPI application with uvicorn server
+- `FROM python:3.11-slim` - uses the slim Python image for balanced size (~120MB) and compatibility
+- `RUN useradd -m -u 1000 appuser` - creates a non-root user (UID 1000) for security
+- `WORKDIR /app` - sets the working directory inside the container
+- `COPY requirements.txt .` - copies requirements first for Docker layer caching
+- `RUN pip install --no-cache-dir -r requirements.txt` - installs dependencies without saving cache (reduces image size)
+- `COPY app.py .` - copies the application code
+- `USER appuser` - switches to non-root user before running the app
+- `EXPOSE 8000` - documents that the container listens on port 8000
+- `HEALTHCHECK` - allows Docker to monitor container health and restart if unhealthy
+- `CMD` - starts the FastAPI application with uvicorn server
 
 ---
 
@@ -118,16 +118,16 @@ CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8001"]
 
 **Line-by-line explanation:**
 
-- `FROM python:3.11-alpine` — Uses Alpine Linux for minimal size (~40MB) and reduced attack surface
-- `RUN adduser -D -u 1000 backenduser` — Creates non-root user (Alpine uses `adduser -D` instead of `useradd`)
-- `WORKDIR /app` — Sets working directory
-- `COPY requirements.txt .` — Copies dependencies first for caching
-- `RUN pip install --no-cache-dir -r requirements.txt` — Installs only FastAPI and uvicorn
-- `COPY app.py .` — Copies the backend application
-- `USER backenduser` — Switches to non-root user
-- `EXPOSE 8001` — Internal port (not exposed to host)
-- `HEALTHCHECK` — Ensures backend is ready before accepting traffic
-- `CMD` — Starts the backend FastAPI application
+- `FROM python:3.11-alpine` - uses Alpine Linux for minimal size (~40MB) and reduced attack surface
+- `RUN adduser -D -u 1000 backenduser` - creates non-root user (Alpine uses `adduser -D` instead of `useradd`)
+- `WORKDIR /app` - sets working directory
+- `COPY requirements.txt .` - copies dependencies first for caching
+- `RUN pip install --no-cache-dir -r requirements.txt` - Installs only FastAPI and uvicorn
+- `COPY app.py .` - copies the backend application
+- `USER backenduser` - switches to non-root user
+- `EXPOSE 8001` - internal port (not exposed to host)
+- `HEALTHCHECK` - ensures backend is ready before accepting traffic
+- `CMD` - starts the backend FastAPI application
 
 ---
 
