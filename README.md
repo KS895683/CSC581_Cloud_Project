@@ -6,8 +6,32 @@
 
 ---
 
+## Project Purpose
+
+This project implements an **API Gateway** that protects backend services from abuse and provides a single entry point for client applications. The gateway demonstrates three core infrastructure patterns:
+
+1. **Rate Limiting**: Prevents denial-of-service attacks by limiting clients to 10 requests per minute
+2. **Security Hardening**: Runs containers as non-root users with dropped capabilities
+3. **Service Isolation**: Backend services are hidden from external access, only reachable through the gateway
+
+This is a real-world cloud infrastructure pattern used by companies like Netflix, Amazon, and Uber to secure and manage their microservices architectures. The gateway acts as a **security guard and traffic cop** for the backend service.
+
+---
 ## Vision
 
+### What This Project Does
+
+The API Gateway serves as the **single entry point** for all client requests. When a client makes a request:
+
+1. The gateway **checks if the client has exceeded their rate limit** (10 requests per minute)
+2. If the limit is exceeded, the client receives a `429 Too Many Requests` response
+3. If within limits, the gateway **forwards the request** to the backend service
+4. The backend processes the request and returns data
+5. The gateway adds tracking headers and returns the response to the client
+
+This protects the backend from being overwhelmed by too many requests - a common security concern in cloud applications.
+
+---
 ### Architecture Diagram
 
 ```mermaid
