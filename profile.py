@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import geni.portal as portal
 import geni.rspec.pg as rspec
 
