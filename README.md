@@ -8,30 +8,16 @@
 
 ## Project Purpose
 
-This project implements an **API Gateway** that protects backend services from abuse and provides a single entry point for client applications. The gateway demonstrates three core infrastructure patterns:
-
-1. **Rate Limiting**: Prevents denial-of-service attacks by limiting clients to 10 requests per minute
-2. **Security Hardening**: Runs containers as non-root users with dropped capabilities
-3. **Service Isolation**: Backend services are hidden from external access, only reachable through the gateway
-
-This is a real-world cloud infrastructure pattern used by companies like Netflix, Amazon, and Uber to secure and manage their microservices architectures. The gateway acts as a **security guard and traffic cop** for the backend service.
+This project implements an API Gateway that protects backend services from abuse and provides a single entry point for client applications. The gateway demonstrates three core infrastructure patterns: rate limiting to prevent denial-of-service attacks by restricting clients to 10 requests per minute, security hardening by running containers as non-root users with dropped capabilities, and service isolation where backend services are hidden from external access and only reachable through the gateway. This architecture mirrors real-world cloud infrastructure patterns used by companies like Netflix, Amazon, and Uber to secure and manage their microservices deployments.
 
 ---
+
 ## Vision
 
 ### What This Project Does
 
-The API Gateway serves as the **single entry point** for all client requests. When a client makes a request:
+The API Gateway serves as the single entry point for all client requests. When a client makes a request, the gateway first checks whether the client has exceeded the rate limit of 10 requests per minute. If the limit is exceeded, the client receives a `429 Too Many Requests` response. If the request is within limits, the gateway forwards the request to the backend service, which processes the request and returns data. The gateway then adds tracking headers and returns the response to the client. This design protects the backend from being overwhelmed by excessive requests, a common security concern in cloud applications.
 
-1. The gateway **checks if the client has exceeded their rate limit** (10 requests per minute)
-2. If the limit is exceeded, the client receives a `429 Too Many Requests` response
-3. If within limits, the gateway **forwards the request** to the backend service
-4. The backend processes the request and returns data
-5. The gateway adds tracking headers and returns the response to the client
-
-This protects the backend from being overwhelmed by too many requests - a common security concern in cloud applications.
-
----
 ### Architecture Diagram
 
 ```mermaid
@@ -49,109 +35,33 @@ graph TD
 
 ---
 
-### Component Communication
+## Component Communication
 
-1. **Testing Client**: Thunder Client (VS Code extension), curl, or Postman
-2. **External Access**: Client → Gateway via HTTP port 8000
-3. **Internal Routing**: Gateway → Backend via HTTP port 8001 (Docker internal)
-4. **Data Format**: REST API with JSON request/response payloads
-5. **Service Discovery**: Docker's internal DNS using container names
+The system uses a REST API architecture with JSON payloads for all data exchange. Client requests are received by the API Gateway on external port 8000. The gateway then forwards valid requests to the backend service via internal port 8001 using Docker's internal bridge network. Service discovery is handled automatically through Docker's internal DNS resolution by container name, eliminating the need for static IP addresses or manual host file configuration.
+
+---
 
 ## Proposal
 
 ### Component 1: API Gateway (Custom Dockerfile)
 
-- **Base Image**: `python:3.11-slim`
-- **Reason**: General-purpose applications, balancing size with broad library support
-- **Access**: External access via `http://localhost:8000` for testing
+The API Gateway uses python:3.11-slim as its base image. This choice provides a balance between image size and library compatibility, making it suitable for general-purpose applications. The gateway is accessible externally at `http://localhost:8000` for testing purposes.
 
-### Component 2: Backend Service  
+### Component 2: Backend Service
 
-- **Base Image**: `python:3.11-alpine`
-- **Reason**: Extremely small image size, reduced attack surface, great for minimal environments
-- **Access**: Internal only, accessed via Gateway forwarding
+The backend service uses python:3.11-alpine as its base image. This Alpine Linux variant offers an extremely small image size of approximately 40MB and a reduced attack surface, making it ideal for minimal environments. The backend is only accessible internally through the gateway, never exposed directly to external clients.
 
 ---
 
 ## Build Process
 
 ### Gateway Dockerfile Analysis
-```dockerfile
-FROM python:3.11-slim
 
-RUN useradd -m -u 1000 appuser && \
-    mkdir -p /app && \
-    chown -R appuser:appuser /app
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY app.py .
-
-USER appuser
-
-EXPOSE 8000
-
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD python -c "import requests; requests.get('http://localhost:8000/health', timeout=2)"
-
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-**Line-by-line explanation:**
-
-- `FROM python:3.11-slim` - uses the slim Python image for balanced size (~120MB) and compatibility
-- `RUN useradd -m -u 1000 appuser` - creates a non-root user (UID 1000) for security
-- `WORKDIR /app` - sets the working directory inside the container
-- `COPY requirements.txt .` - copies requirements first for Docker layer caching
-- `RUN pip install --no-cache-dir -r requirements.txt` - installs dependencies without saving cache (reduces image size)
-- `COPY app.py .` - copies the application code
-- `USER appuser` - switches to non-root user before running the app
-- `EXPOSE 8000` - documents that the container listens on port 8000
-- `HEALTHCHECK` - allows Docker to monitor container health and restart if unhealthy
-- `CMD` - starts the FastAPI application with uvicorn server
-
----
+The Gateway Dockerfile begins with FROM python:3.11-slim, which provides a minimal Python environment that balances size and compatibility. The next instruction RUN useradd -m -u 1000 appuser creates a dedicated non-root user with UID 1000, a security requirement for the A-level grade. The working directory is set to /app using WORKDIR /app. Dependencies are installed by first copying requirements.txt and running pip install --no-cache-dir -r requirements.txt; copying requirements before application code optimizes Docker layer caching. The application code is copied with COPY app.py .. The instruction USER appuser switches to the non-root user before the application runs, ensuring all processes execute without root privileges. EXPOSE 8000 documents that the container listens on port 8000, though this is primarily informational. The HEALTHCHECK instruction enables Docker to monitor container health and automatically restart unhealthy containers. Finally, CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"] starts the FastAPI application using the uvicorn server.
 
 ### Backend Dockerfile Analysis
-```dockerfile
-FROM python:3.11-alpine
 
-RUN adduser -D -u 1000 backenduser && \
-    mkdir -p /app && \
-    chown -R backenduser:backenduser /app
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY app.py .
-
-USER backenduser
-
-EXPOSE 8001
-
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD python -c "import requests; requests.get('http://localhost:8001/health', timeout=2)"
-
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8001"]
-```
-
-**Line-by-line explanation:**
-
-- `FROM python:3.11-alpine` - uses Alpine Linux for minimal size (~40MB) and reduced attack surface
-- `RUN adduser -D -u 1000 backenduser` - creates non-root user (Alpine uses `adduser -D` instead of `useradd`)
-- `WORKDIR /app` - sets working directory
-- `COPY requirements.txt .` - copies dependencies first for caching
-- `RUN pip install --no-cache-dir -r requirements.txt` - Installs only FastAPI and uvicorn
-- `COPY app.py .` - copies the backend application
-- `USER backenduser` - switches to non-root user
-- `EXPOSE 8001` - internal port (not exposed to host)
-- `HEALTHCHECK` - ensures backend is ready before accepting traffic
-- `CMD` - starts the backend FastAPI application
+The Backend Dockerfile uses FROM python:3.11-alpine, an Alpine Linux variant that provides a minimal image of approximately 40MB with a reduced attack surface. The instruction RUN adduser -D -u 1000 backenduser creates a non-root user; note that Alpine uses adduser -D instead of the useradd command found in Debian-based images. The working directory is set to /app and the requirements file is copied. Dependencies are installed with pip install --no-cache-dir -r requirements.txt, which installs only FastAPI and uvicorn. The application code is copied, and the user switches to the non-root user with USER backenduser. Port 8001 is exposed but this port is internal only and not accessible from the host machine. The healthcheck ensures the backend is ready before accepting traffic, and the CMD instruction starts the FastAPI application on port 8001.
 
 ---
 
@@ -159,58 +69,20 @@ CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8001"]
 
 ### Docker Bridge Network
 
-The project uses a **user-defined bridge network** for container communication:
-```yaml
-networks:
-  api-network:
-    driver: bridge
-```
-
-**Why bridge network?**
-
-- Isolates containers from host network
-- Enables DNS-based service discovery
-- Allows controlled port exposure (only Gateway exposed externally)
-
----
+The project uses a user-defined bridge network for container communication, defined in the docker-compose.yml file as api-network with the bridge driver. A bridge network isolates containers from the host network while enabling DNS-based service discovery. It also allows controlled port exposure, with only the gateway exposed externally.
 
 ### DNS Resolution by Container Name
 
-Docker provides automatic DNS resolution for containers on the same network:
-```python
-# In gateway/app.py
-BACKEND_URL = "http://backend:8001"
-```
-
-- `backend` resolves to the backend container's IP address automatically
-- No need for static IPs or manual `/etc/hosts` configuration
-- Service discovery happens out-of-the-box
-
----
+Docker provides automatic DNS resolution for containers on the same network. In the gateway application code, the backend URL is defined as `http://backend:8001`. The hostname backend resolves automatically to the backend container's IP address without requiring static IPs or manual /etc/hosts configuration. This out-of-the-box service discovery is a key feature of Docker networking.
 
 ### Network Configuration Summary
 
-| Service | Network Access     | Port Mapping       | Purpose                        |
-|---------|--------------------|--------------------|--------------------------------|
-| Gateway | External + Internal | `8000:8000`       | Accepts client requests        |
-| Backend | Internal Only      | `8001` (exposed)   | Only accessible via Gateway    |
-
----
+The gateway service is configured with both external and internal network access. Its port mapping 8000:8000 exposes the gateway to the host machine, allowing clients to connect. The backend service, by contrast, uses internal-only access. While port 8001 is exposed within the Docker network, it has no host port mapping, making it accessible only through the gateway.
 
 ### Why Internal-Only for Backend?
 
-1. **Security**: Reduces attack surface (only one entry point to the system)
-2. **Architecture**: Enforces single entry point pattern
-3. **Simplified Firewall**: Only one port needs external protection
-
----
+The backend service is intentionally not exposed to the host for three reasons. First, security is improved because reducing the attack surface to a single entry point limits potential vulnerabilities. Second, the architecture enforces a single entry point pattern, ensuring all traffic passes through the gateway where rate limiting and logging can be applied. Third, firewall management is simplified since only one port requires external protection.
 
 ### Testing Network Connectivity
-```bash
-# Access gateway (external)
-curl http://localhost:8000/health
 
-# Gateway internally reaches backend via DNS
-curl http://localhost:8000/api/data
-```
-
+Network connectivity can be verified with two curl commands. The command curl `http://localhost:8000/health` tests external access to the gateway. The command curl `http://localhost:8000/api/data` tests that the gateway can internally reach the backend via DNS resolution, returning data from the backend service through the gateway.
