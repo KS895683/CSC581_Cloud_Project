@@ -86,3 +86,28 @@ The backend service is intentionally not exposed to the host for three reasons. 
 ### Testing Network Connectivity
 
 Network connectivity can be verified with two curl commands. The command curl `http://localhost:8000/health` tests external access to the gateway. The command curl `http://localhost:8000/api/data` tests that the gateway can internally reach the backend via DNS resolution, returning data from the backend service through the gateway.
+
+---
+
+## Deployment on CloudLab
+
+### Prerequisites
+
+- CloudLab account (joined to cloud-edu project)
+- SSH key configured in CloudLab
+
+### Deployment Steps
+
+1. Start experiment from profile `KSunday_CSC581_Project`
+2. SSH into the node using the command shown in CloudLab
+3. Navigate to `/local/repository`
+4. Run `docker-compose up -d`
+5. Test with `curl http://localhost:8000/health`
+
+### Rate Limiting Demo
+
+```bash
+for i in {1..15}; do
+  curl -s -o /dev/null -w "Request $i: HTTP %{http_code}\n" http://localhost:8000/api/data
+done
+```
