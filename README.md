@@ -57,11 +57,11 @@ The backend service uses python:3.11-alpine as its base image. This Alpine Linux
 
 ### Gateway Dockerfile Analysis
 
-The Gateway Dockerfile begins with FROM python:3.11-slim, which provides a minimal Python environment that balances size and compatibility. The next instruction RUN useradd -m -u 1000 appuser creates a dedicated non-root user with UID 1000, a security requirement for the A-level grade. The working directory is set to /app using WORKDIR /app. Dependencies are installed by first copying requirements.txt and running pip install --no-cache-dir -r requirements.txt; copying requirements before application code optimizes Docker layer caching. The application code is copied with COPY app.py .. The instruction USER appuser switches to the non-root user before the application runs, ensuring all processes execute without root privileges. EXPOSE 8000 documents that the container listens on port 8000, though this is primarily informational. The HEALTHCHECK instruction enables Docker to monitor container health and automatically restart unhealthy containers. Finally, CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"] starts the FastAPI application using the uvicorn server.
+The Gateway Dockerfile begins with `FROM python:3.11-slim`, which provides a minimal Python environment that balances size and compatibility. The next instruction `RUN useradd -m -u 1000 appuser` creates a dedicated non-root user with UID 1000, a security requirement for the A-level grade. The working directory is set to `/app` using `WORKDIR /app`. Dependencies are installed by first copying `requirements.txt` and running `pip install --no-cache-dir -r requirements.txt`; copying requirements before application code optimizes Docker layer caching. The application code is copied with `COPY app.py ..` The instruction `USER appuser` switches to the non-root user before the application runs, ensuring all processes execute without root privileges. `EXPOSE 8000` documents that the container listens on port 8000, though this is primarily informational. The `HEALTHCHECK` instruction enables Docker to monitor container health and automatically restart unhealthy containers. Finally, `CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]` starts the FastAPI application using the uvicorn server.
 
 ### Backend Dockerfile Analysis
 
-The Backend Dockerfile uses FROM python:3.11-alpine, an Alpine Linux variant that provides a minimal image of approximately 40MB with a reduced attack surface. The instruction RUN adduser -D -u 1000 backenduser creates a non-root user; note that Alpine uses adduser -D instead of the useradd command found in Debian-based images. The working directory is set to /app and the requirements file is copied. Dependencies are installed with pip install --no-cache-dir -r requirements.txt, which installs only FastAPI and uvicorn. The application code is copied, and the user switches to the non-root user with USER backenduser. Port 8001 is exposed but this port is internal only and not accessible from the host machine. The healthcheck ensures the backend is ready before accepting traffic, and the CMD instruction starts the FastAPI application on port 8001.
+The Backend Dockerfile uses `FROM python:3.11-alpine`, an Alpine Linux variant that provides a minimal image of approximately 40MB with a reduced attack surface. The instruction `RUN adduser -D -u 1000 backenduser` creates a non-root user; note that Alpine uses `adduser -D` instead of the `useradd` command found in Debian-based images. The working directory is set to `/app` and the requirements file is copied. Dependencies are installed with `pip install --no-cache-dir -r requirements.txt`, which installs only FastAPI and uvicorn. The application code is copied, and the user switches to the non-root user with `USER backenduser`. Port 8001 is exposed but this port is internal only and not accessible from the host machine. The healthcheck ensures the backend is ready before accepting traffic, and the `CMD` instruction starts the FastAPI application on port 8001.
 
 ---
 
@@ -69,15 +69,15 @@ The Backend Dockerfile uses FROM python:3.11-alpine, an Alpine Linux variant tha
 
 ### Docker Bridge Network
 
-The project uses a user-defined bridge network for container communication, defined in the docker-compose.yml file as api-network with the bridge driver. A bridge network isolates containers from the host network while enabling DNS-based service discovery. It also allows controlled port exposure, with only the gateway exposed externally.
+The project uses a user-defined bridge network for container communication, defined in the docker-compose.yml file as `api-network` with the bridge driver. A bridge network isolates containers from the host network while enabling DNS-based service discovery. It also allows controlled port exposure, with only the gateway exposed externally.
 
 ### DNS Resolution by Container Name
 
-Docker provides automatic DNS resolution for containers on the same network. In the gateway application code, the backend URL is defined as `http://backend:8001`. The hostname backend resolves automatically to the backend container's IP address without requiring static IPs or manual /etc/hosts configuration. This out-of-the-box service discovery is a key feature of Docker networking.
+Docker provides automatic DNS resolution for containers on the same network. In the gateway application code, the backend URL is defined as `http://backend:8001`. The hostname `backend` resolves automatically to the backend container's IP address without requiring static IPs or manual `/etc/hosts` configuration. This out-of-the-box service discovery is a key feature of Docker networking.
 
 ### Network Configuration Summary
 
-The gateway service is configured with both external and internal network access. Its port mapping 8000:8000 exposes the gateway to the host machine, allowing clients to connect. The backend service, by contrast, uses internal-only access. While port 8001 is exposed within the Docker network, it has no host port mapping, making it accessible only through the gateway.
+The gateway service is configured with both external and internal network access. Its port mapping `8000:8000` exposes the gateway to the host machine, allowing clients to connect. The backend service, by contrast, uses internal-only access. While port 8001 is exposed within the Docker network, it has no host port mapping, making it accessible only through the gateway.
 
 ### Why Internal-Only for Backend?
 
@@ -85,29 +85,60 @@ The backend service is intentionally not exposed to the host for three reasons. 
 
 ### Testing Network Connectivity
 
-Network connectivity can be verified with two curl commands. The command curl `http://localhost:8000/health` tests external access to the gateway. The command curl `http://localhost:8000/api/data` tests that the gateway can internally reach the backend via DNS resolution, returning data from the backend service through the gateway.
+Network connectivity can be verified with two curl commands. The command `curl http://localhost:8000/health` tests external access to the gateway. The command `curl http://localhost:8000/api/data` tests that the gateway can internally reach the backend via DNS resolution, returning data from the backend service through the gateway.
 
 ---
 
-## Deployment on CloudLab
+## Infrastructure as Code with CloudLab
 
-### Prerequisites
+### Profile Automation
 
-- CloudLab account (joined to cloud-edu project)
-- SSH key configured in CloudLab
+This project uses Infrastructure as Code (IaC) principles to automate deployment on CloudLab. The `profile.py` script defines the entire environment setup, making the deployment repeatable and reliable.
 
-### Deployment Steps
+### What `profile.py` Does
 
-1. Start experiment from profile `KSunday_CSC581_Project`
-2. SSH into the node using the command shown in CloudLab
-3. Navigate to `/local/repository`
-4. Run `docker-compose up -d`
-5. Test with `curl http://localhost:8000/health`
+When a new experiment is started from this profile, CloudLab automatically:
 
-### Rate Limiting Demo
+1. Provisions a Ubuntu 22.04 node with a routable control IP
 
-```bash
-for i in {1..15}; do
-  curl -s -o /dev/null -w "Request $i: HTTP %{http_code}\n" http://localhost:8000/api/data
-done
-```
+2. Installs Docker and Docker Compose without any manual intervention
+
+3. Builds both containers (Gateway and Backend) from the Dockerfiles
+
+4. Starts the API Gateway stack in detached mode
+
+### Benefits of This Approach
+
+The Infrastructure as Code approach provides several benefits. Repeatability ensures that every experiment starts with the exact same configuration. No manual setup is required because Docker is installed and containers are running immediately after boot. The profile script is version controlled in Git alongside the application code. This cloud-native pattern mirrors how real cloud deployments work with tools like Terraform and CloudFormation.
+
+### Starting an Experiment
+
+To start an experiment, go to CloudLab and navigate to Experiments. Click Start Experiment and select the `KSunday_CSC581_Project` profile. Choose a cluster with available resources and click Create. Wait 5 to 10 minutes for the node to boot and the stack to start. Then SSH into the node. Your API Gateway will already be running.
+
+---
+
+## Conclusion
+
+This project successfully implements a secure API Gateway with rate limiting, demonstrating key cloud infrastructure patterns.
+
+### Patterns Demonstrated
+
+The API Gateway pattern provides a single entry point for all client requests, offering rate limiting, request forwarding, and security headers. Infrastructure as Code is demonstrated through the `profile.py` script that automates the entire CloudLab deployment from Docker installation to container startup. Defense in Depth is achieved through multiple security layers including non-root users, dropped capabilities, and resource limits. Service isolation ensures backend services are hidden from external access and only reachable through the gateway. Containerization allows both components to run in isolated Docker containers with health checks and resource constraints.
+
+### Technologies Used
+
+The project uses Docker as the container runtime. Docker Compose provides multi-container orchestration. Python and FastAPI serve as the web framework for both the Gateway and Backend. CloudLab is the cloud infrastructure testbed. GitHub provides version control and CI/CD capabilities.
+
+### Security Features Implemented
+
+Non-root users are implemented with `USER appuser` and `USER backenduser` in the Dockerfiles. Dropped capabilities are configured with `cap_drop: ALL` and `cap_add: NET_BIND_SERVICE`. Resource limits are set with CPU (0.5 core) and memory (256MB) limits via cgroups. Network isolation ensures the backend is exposed internally only with no host port mapping. Health checks are included with the `HEALTHCHECK` instruction in both Dockerfiles.
+
+### Future Improvements
+
+Potential future improvements include adding Redis for persistent rate limiting counters across container restarts, implementing JWT authentication for request authorization, adding Prometheus metrics collection for monitoring, setting up a full CI/CD pipeline with GitHub Actions, and adding HTTPS/TLS support with automatic certificate renewal.
+
+### Repository Structure
+
+The repository contains the following files and folders. The `README.md` file provides documentation. The `profile.py` file is the CloudLab automation script. The `docker-compose.yml` file handles container orchestration. The `gateway` folder contains the API Gateway service with its `Dockerfile`, `app.py`, and `requirements.txt`. The backend folder contains the backend service with its `Dockerfile`, `app.py`, and `requirements.txt`.
+
+---
