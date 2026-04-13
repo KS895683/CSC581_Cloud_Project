@@ -1,16 +1,29 @@
+#!/usr/bin/env python3
+
 import geni.portal as portal
 import geni.rspec.pg as rspec
 
-# Create a Request object to start building the RSpec.
-request = portal.context.makeRequestRSpec()
-# Create a XenVM
-node = request.XenVM("node")
-node.disk_image = "urn:publicid:IDN+emulab.net+image+emulab-ops:UBUNTU22-64-STD"
-node.routable_control_ip = "true"
+pc = portal.Context()
 
-node.addService(rspec.Execute(shell="/bin/sh", command="sudo apt update"))
-node.addService(rspec.Execute(shell="/bin/sh", command="sudo apt install -y apache2"))
-node.addService(rspec.Execute(shell="/bin/sh", command='sudo systemctl status apache2'))
+# Create a request for one node
+request = pc.makeRequestRSpec()
 
-# Print the RSpec to the enclosing page.
-portal.context.printRequestRSpec()
+# Add a single node
+node = request.RawPC("node")
+node.disk_image = "urn:publicid:IDN+emulab.net+image+emulab-ops//UBUNTU22-64-STD"
+
+# Install Docker and Docker Compose
+install_docker = rspec.Execute(
+    shell="sudo apt update -y && sudo apt install -y docker.io docker-compose && sudo usermod -aG docker $USER",
+    shell="bash"
+)
+node.addService(install_docker)
+
+# Wait for Docker to be ready and start your stack
+start_services = rspec.Execute(
+    shell="cd /local/repository && docker-compose up --build -d",
+    shell="bash"
+)
+node.addService(start_services)
+
+pc.printRequestRSpec(request)
